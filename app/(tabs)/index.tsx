@@ -192,7 +192,6 @@ export default function ScanScreen() {
                 <Text style={styles.mockImageText}>Retinal Image Captured</Text>
               </View>
             </View>
-          </View>
           </Animated.View>
 
           <View style={styles.actionButtons}>
@@ -219,7 +218,6 @@ export default function ScanScreen() {
               )}
             </TouchableOpacity>
           </View>
-        </View>
         
         <ResultsModal 
           visible={showResults} 
@@ -232,52 +230,51 @@ export default function ScanScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <><View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       <View style={styles.header}>
         <Text style={styles.headerTitle}>AI Retinal Analysis</Text>
         <Text style={styles.headerSubtitle}>Position camera for optimal retinal capture</Text>
       </View>
-      </View>
-      <View style={styles.cameraContainer}>
-        <CameraView
-          ref={cameraRef}
-          style={styles.camera}
-          facing={facing}
-        >
-          <View style={styles.overlay}>
-            <View style={styles.scanFrame}>
-              <View style={styles.cornerTL} />
-              <View style={styles.cornerTR} />
-              <View style={styles.cornerBL} />
-              <View style={styles.cornerBR} />
-            </View>
-            <Text style={styles.instructionText}>
-              Center retina within frame
-            </Text>
-          </View>
-        </CameraView>
-      </View>
-
-      <View style={styles.controls}>
-        <TouchableOpacity 
-          style={styles.flipButton} 
-          onPress={() => setFacing(facing === 'back' ? 'front' : 'back')}
-        >
-          <RotateCcw size={22} color="#6B7280" />
-        </TouchableOpacity>
-
-        <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-          <TouchableOpacity style={styles.captureButton} onPress={takePicture}>
-            <View style={styles.captureButtonInner}>
-              <View style={styles.captureButtonCore} />
-            </View>
-          </TouchableOpacity>
-        </Animated.View>
-
-        <View style={styles.placeholder} />
-      </View>
     </View>
+    <View style={styles.cameraContainer}>
+      <CameraView
+        ref={cameraRef}
+        style={styles.camera}
+        facing={facing}
+      >
+        <View style={styles.overlay}>
+          <View style={styles.scanFrame}>
+            <View style={styles.cornerTL} />
+            <View style={styles.cornerTR} />
+            <View style={styles.cornerBL} />
+            <View style={styles.cornerBR} />
+          </View>
+          <Text style={styles.instructionText}>
+            Center retina within frame
+          </Text>
+        </View>
+      </CameraView>
+    </View>
+    <View style={styles.controls}>
+      <TouchableOpacity
+        style={styles.flipButton}
+        onPress={() => setFacing(facing === 'back' ? 'front' : 'back')}
+      >
+        <RotateCcw size={22} color="#6B7280" />
+      </TouchableOpacity>
+
+      <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+        <TouchableOpacity style={styles.captureButton} onPress={takePicture}>
+          <View style={styles.captureButtonInner}>
+            <View style={styles.captureButtonCore} />
+          </View>
+        </TouchableOpacity>
+      </Animated.View>
+
+      <View style={styles.placeholder} />
+    </View>
+    </>
   );
 }
 
