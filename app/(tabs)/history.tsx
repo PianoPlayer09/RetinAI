@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -9,44 +9,22 @@ import {
   StatusBar,
 } from 'react-native';
 import { Calendar, Clock, TriangleAlert as AlertTriangle, CircleCheck as CheckCircle, ChevronRight, Activity } from 'lucide-react-native';
-
-// Mock history data
-const mockHistory = [
-  {
-    id: '1',
-    date: '2025-01-16',
-    time: '14:30',
-    overallRisk: 'moderate',
-    mainCondition: 'Diabetic Retinopathy',
-    confidence: 0.87,
-  },
-  {
-    id: '2',
-    date: '2025-01-12',
-    time: '09:15',
-    overallRisk: 'low',
-    mainCondition: 'No significant issues',
-    confidence: 0.92,
-  },
-  {
-    id: '3',
-    date: '2025-01-08',
-    time: '16:45',
-    overallRisk: 'moderate',
-    mainCondition: 'Early Macular Degeneration',
-    confidence: 0.78,
-  },
-  {
-    id: '4',
-    date: '2025-01-02',
-    time: '11:20',
-    overallRisk: 'low',
-    mainCondition: 'Routine screening - Normal',
-    confidence: 0.95,
-  },
-];
+import { getHistory, ScanRecord } from '@/lib/storage';
+import { router } from 'expo-router';
 
 export default function HistoryScreen() {
+  const [history, setHistory] = useState<ScanRecord[]>([]);
+
+  useEffect(() => {
+    const unsub = setInterval(async () => {
+      // refresh periodically to reflect new scans
+      const list = await getHistory();
+      setHistory(list);
+    }, 1000);
+    (async () => setHistory(await getHistory()))();
+    return () => clearInterval(unsub);
+  }, []);
+
   const getRiskColor = (risk: string) => {
     switch (risk) {
       case 'low': return '#059669';
@@ -65,13 +43,17 @@ export default function HistoryScreen() {
     }
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
+  const formatDate = (iso: string) => {
+    const date = new Date(iso);
     return date.toLocaleDateString('en-US', { 
       month: 'short', 
       day: 'numeric',
       year: 'numeric'
     });
+  };
+  const formatTime = (iso: string) => {
+    const date = new Date(iso);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   return (
@@ -84,14 +66,14 @@ export default function HistoryScreen() {
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         <View style={styles.content}>
-          {mockHistory.map((scan, index) => (
-            <TouchableOpacity key={scan.id} style={styles.historyCard}>
+          {history.map((scan) => (
+            <TouchableOpacity key={scan.id} style={styles.historyCard} onPress={() => router.push({ pathname: '/history/[id]', params: { id: scan.id } })}>
               <View style={styles.cardHeader}>
                 <View style={styles.dateContainer}>
                   <Calendar size={16} color="#6B7280" />
-                  <Text style={styles.dateText}>{formatDate(scan.date)}</Text>
+                  <Text style={styles.dateText}>{formatDate(scan.createdAt)}</Text>
                   <Clock size={16} color="#6B7280" />
-                  <Text style={styles.timeText}>{scan.time}</Text>
+                  <Text style={styles.timeText}>{formatTime(scan.createdAt)}</Text>
                 </View>
                 <ChevronRight size={20} color="#9CA3AF" />
               </View>
@@ -123,7 +105,7 @@ export default function HistoryScreen() {
             </TouchableOpacity>
           ))}
 
-          {mockHistory.length === 0 && (
+          {history.length === 0 && (
             <View style={styles.emptyState}>
               <Activity size={64} color="#D1D5DB" />
               <Text style={styles.emptyTitle}>No Scans Yet</Text>

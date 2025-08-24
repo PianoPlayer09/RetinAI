@@ -1,5 +1,6 @@
+import React from 'react';
 import { Tabs } from 'expo-router';
-import { ScanLine, FileText, Settings } from 'lucide-react-native';
+import { ScanLine, FileText, Settings, ActivitySquare } from 'lucide-react-native';
 
 export default function TabLayout() {
   return (
@@ -33,6 +34,15 @@ export default function TabLayout() {
           title: 'History',
           tabBarIcon: ({ size, color }) => (
             <FileText size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="results"
+        options={{
+          title: 'Results',
+          tabBarIcon: ({ size, color }) => (
+            <ActivitySquare size={size} color={color} />
           ),
         }}
       />

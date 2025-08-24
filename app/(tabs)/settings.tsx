@@ -8,7 +8,11 @@ import {
   Switch,
   Platform,
   StatusBar,
+  Alert,
 } from 'react-native';
+import { router } from 'expo-router';
+import * as Sharing from 'expo-sharing';
+import { exportHistoryToFile } from '@/lib/storage';
 import { User, Bell, Shield, CircleHelp as HelpCircle, FileText, ChevronRight, Camera, Database, Smartphone, Info } from 'lucide-react-native';
 
 export default function SettingsScreen() {
@@ -125,13 +129,29 @@ export default function SettingsScreen() {
               icon={<Shield size={20} color="#3B82F6" />}
               title="Privacy Settings"
               subtitle="Control how your data is used"
-              onPress={() => {}}
+              onPress={() => router.push('/privacy' as any)}
             />
             <SettingsRow
               icon={<FileText size={20} color="#3B82F6" />}
               title="Data Export"
               subtitle="Download your scan history"
-              onPress={() => {}}
+              onPress={async () => {
+                try {
+                  const fileUri = await exportHistoryToFile();
+                  if (!fileUri) {
+                    Alert.alert('Nothing to export', 'No history to export yet.');
+                    return;
+                  }
+                  const canShare = await Sharing.isAvailableAsync();
+                  if (canShare) {
+                    await Sharing.shareAsync(fileUri, { mimeType: 'application/json' });
+                  } else {
+                    Alert.alert('Export complete', `Exported to: ${fileUri}`);
+                  }
+                } catch (e) {
+                  Alert.alert('Error', 'Failed to export history.');
+                }
+              }}
             />
           </SettingsSection>
 
@@ -140,13 +160,13 @@ export default function SettingsScreen() {
               icon={<HelpCircle size={20} color="#3B82F6" />}
               title="Help & FAQ"
               subtitle="Get help with using the app"
-              onPress={() => {}}
+              onPress={() => router.push('/help' as any)}
             />
             <SettingsRow
               icon={<Info size={20} color="#3B82F6" />}
               title="Terms & Privacy"
               subtitle="Review our policies"
-              onPress={() => {}}
+              onPress={() => router.push('/terms' as any)}
             />
           </SettingsSection>
 

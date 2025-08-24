@@ -10,40 +10,17 @@ import {
   Modal,
   StatusBar,
 } from 'react-native';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { TriangleAlert as AlertTriangle, CircleCheck as CheckCircle, Info, Eye, Calendar, Share, X } from 'lucide-react-native';
+import { openFindSpecialist } from '@/lib/openMaps';
+import { classifyFromAP } from '@/lib/classifier';
 
 const { width, height } = Dimensions.get('window');
 
-// Mock data - replace with actual AI model results
-const mockResults = {
-  overallRisk: 'moderate',
-  confidence: 0.87,
-  diseases: [
-    {
-      name: 'Diabetic Retinopathy',
-      probability: 0.73,
-      severity: 'moderate',
-      description: 'Blood vessel damage in the retina caused by diabetes',
-      recommendations: ['Consult an ophthalmologist immediately', 'Monitor blood sugar levels', 'Schedule regular eye exams'],
-    },
-    {
-      name: 'Macular Degeneration',
-      probability: 0.15,
-      severity: 'low',
-      description: 'Deterioration of the central portion of the retina',
-      recommendations: ['Annual eye examinations', 'Maintain healthy diet rich in antioxidants'],
-    },
-    {
-      name: 'Glaucoma',
-      probability: 0.08,
-      severity: 'low',
-      description: 'Increased pressure in the eye leading to optic nerve damage',
-      recommendations: ['Regular eye pressure monitoring', 'Consider preventive measures'],
-    },
-  ],
-  scanDate: new Date().toLocaleDateString(),
-  scanTime: new Date().toLocaleTimeString(),
-};
+const cls = classifyFromAP();
+const scanDate = new Date().toLocaleDateString();
+const scanTime = new Date().toLocaleTimeString();
 
 interface ResultsModalProps {
   visible: boolean;
@@ -109,6 +86,26 @@ export default function ResultsModal({ visible, onClose }: ResultsModalProps) {
     return '#059669';
   };
 
+  const onShare = async () => {
+    const payload = {
+      generatedAt: new Date().toISOString(),
+      results: {
+        overallRisk: cls.overallRisk,
+        confidence: cls.confidence,
+        diseases: cls.all.map(d => ({ name: d.name, probability: d.probability, description: d.description })),
+      },
+    };
+    const json = JSON.stringify(payload, null, 2);
+    const fileUri = `${FileSystem.cacheDirectory}retinai-results-${Date.now()}.json`;
+    await FileSystem.writeAsStringAsync(fileUri, json);
+    const canShare = await Sharing.isAvailableAsync();
+    if (canShare) {
+      await Sharing.shareAsync(fileUri, { mimeType: 'application/json' });
+    } else {
+      alert(`Saved results to: ${fileUri}`);
+    }
+  };
+
   return (
     <Modal
       visible={visible}
@@ -129,7 +126,7 @@ export default function ResultsModal({ visible, onClose }: ResultsModalProps) {
               <Text style={styles.headerTitle}>Analysis Complete</Text>
               <View style={styles.scanInfo}>
                 <Calendar size={14} color="#6B7280" />
-                <Text style={styles.scanDate}>{mockResults.scanDate} at {mockResults.scanTime}</Text>
+                <Text style={styles.scanDate}>{scanDate} at {scanTime}</Text>
               </View>
             </View>
             <TouchableOpacity style={styles.closeButton} onPress={onClose}>
@@ -142,11 +139,11 @@ export default function ResultsModal({ visible, onClose }: ResultsModalProps) {
               {/* Overall Risk Card */}
               <View style={styles.overallRiskCard}>
                 <View style={styles.riskHeader}>
-                  {getRiskIcon(mockResults.overallRisk)}
+                  {getRiskIcon(cls.overallRisk)}
                   <View style={styles.riskInfo}>
                     <Text style={styles.riskTitle}>Overall Assessment</Text>
-                    <Text style={[styles.riskLevel, { color: getRiskColor(mockResults.overallRisk) }]}>
-                      {mockResults.overallRisk.toUpperCase()} RISK
+                    <Text style={[styles.riskLevel, { color: getRiskColor(cls.overallRisk) }]}>
+                      {cls.overallRisk.toUpperCase()} RISK
                     </Text>
                   </View>
                 </View>
@@ -156,18 +153,18 @@ export default function ResultsModal({ visible, onClose }: ResultsModalProps) {
                     <View 
                       style={[
                         styles.confidenceFill, 
-                        { width: `${mockResults.confidence * 100}%` }
+                        { width: `${cls.confidence * 100}%` }
                       ]} 
                     />
                   </View>
-                  <Text style={styles.confidenceText}>{Math.round(mockResults.confidence * 100)}%</Text>
+                  <Text style={styles.confidenceText}>{Math.round(cls.confidence * 100)}%</Text>
                 </View>
               </View>
 
               {/* Disease Detection Results */}
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Detected Conditions</Text>
-                {mockResults.diseases.map((disease, index) => (
+                {cls.all.map((disease, index) => (
                   <View key={index} style={styles.diseaseCard}>
                     <View style={styles.diseaseHeader}>
                       <View style={styles.diseaseInfo}>
@@ -200,11 +197,8 @@ export default function ResultsModal({ visible, onClose }: ResultsModalProps) {
 
                     <View style={styles.recommendationsContainer}>
                       <Text style={styles.recommendationsTitle}>Recommendations:</Text>
-                      {disease.recommendations.map((rec, recIndex) => (
-                        <Text key={recIndex} style={styles.recommendationItem}>
-                          • {rec}
-                        </Text>
-                      ))}
+                      <Text style={styles.recommendationItem}>• Consult a specialist if non-Normal is likely</Text>
+                      <Text style={styles.recommendationItem}>• Maintain regular eye exams and follow medical advice</Text>
                     </View>
                   </View>
                 ))}
@@ -226,12 +220,12 @@ export default function ResultsModal({ visible, onClose }: ResultsModalProps) {
 
           {/* Action Buttons */}
           <View style={styles.actionButtons}>
-            <TouchableOpacity style={styles.shareButton}>
+            <TouchableOpacity style={styles.shareButton} onPress={onShare}>
               <Share size={18} color="#3B82F6" />
               <Text style={styles.shareButtonText}>Share Results</Text>
             </TouchableOpacity>
             
-            <TouchableOpacity style={styles.consultButton}>
+            <TouchableOpacity style={styles.consultButton} onPress={openFindSpecialist}>
               <Eye size={18} color="#FFFFFF" />
               <Text style={styles.consultButtonText}>Find Specialist</Text>
             </TouchableOpacity>

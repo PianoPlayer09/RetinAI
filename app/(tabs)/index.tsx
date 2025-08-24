@@ -11,7 +11,11 @@ import {
   StatusBar,
 } from 'react-native';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
-import { Camera, RotateCcw, Check, Zap, X } from 'lucide-react-native';
+import { Image, ActivityIndicator } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { addToHistory, persistCapturedImage } from '@/lib/storage';
+import { classifyFromAP } from '@/lib/classifier';
+import { Camera, RotateCcw, Check, Zap, X, ImagePlus } from 'lucide-react-native';
 import { router } from 'expo-router';
 import ResultsModal from '@/components/ResultsModal';
 
@@ -24,10 +28,13 @@ export default function ScanScreen() {
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showResults, setShowResults] = useState(false);
+  const [hasWarnedFlash, setHasWarnedFlash] = useState(false);
+  const [isPreparing, setIsPreparing] = useState(false); // post-capture buffer
   const cameraRef = useRef<CameraView>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.9)).current;
+  const flashAnim = useRef(new Animated.Value(0)).current; // visual screen flash
 
   useEffect(() => {
     if (!capturedImage) {
@@ -95,17 +102,64 @@ export default function ScanScreen() {
     );
   }
 
-  const takePicture = async () => {
+  const startFlashOverlay = () => {
+    flashAnim.setValue(0);
+    Animated.sequence([
+      Animated.timing(flashAnim, { toValue: 1, duration: 80, useNativeDriver: true }),
+      Animated.timing(flashAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
+    ]).start();
+  };
+
+  const doCapture = async () => {
     if (cameraRef.current) {
       try {
+        setIsPreparing(true);
+        startFlashOverlay();
         const photo = await cameraRef.current.takePictureAsync({
           quality: 1,
           base64: false,
         });
-        setCapturedImage(photo.uri);
+        const savedUri = await persistCapturedImage(photo.uri);
+        setCapturedImage(savedUri);
+        // brief buffer to simulate pre-processing window for future model
+        setTimeout(() => setIsPreparing(false), 2200);
       } catch (error) {
+        setIsPreparing(false);
         Alert.alert('Error', 'Failed to capture image');
       }
+    }
+  };
+
+  const takePicture = async () => {
+    if (!hasWarnedFlash) {
+      Alert.alert(
+        'Flash Warning',
+        'The flashlight/flash will activate during capture. Avoid direct eye exposure.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Continue', style: 'default', onPress: () => { setHasWarnedFlash(true); doCapture(); } },
+        ]
+      );
+      return;
+    }
+    await doCapture();
+  };
+
+  const pickFromGallery = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 1,
+        base64: false,
+        allowsEditing: false,
+      });
+      if (!result.canceled && result.assets?.length) {
+        const uri = result.assets[0].uri;
+        const savedUri = await persistCapturedImage(uri);
+        setCapturedImage(savedUri);
+      }
+    } catch (e) {
+      Alert.alert('Error', 'Failed to pick image from gallery');
     }
   };
 
@@ -137,9 +191,23 @@ export default function ScanScreen() {
     // }
 
     // Mock analysis delay
-    setTimeout(() => {
+    setTimeout(async () => {
       setIsAnalyzing(false);
       setShowResults(true);
+      // Save to history with current date/time using classifier
+      if (capturedImage) {
+        const cls = classifyFromAP();
+        await addToHistory({
+          id: `${Date.now()}`,
+          createdAt: new Date().toISOString(),
+          imageUri: capturedImage,
+          overallRisk: cls.overallRisk,
+          mainCondition: cls.predicted.name,
+          confidence: cls.confidence,
+        });
+      }
+      // Navigate to Results tab
+      router.push('/results' as any);
     }, 3000);
   };
 
@@ -186,11 +254,14 @@ export default function ScanScreen() {
             ]}
           >
             <View style={styles.imagePreview}>
-              {/* In a real app, you'd display the captured image here */}
-              <View style={styles.mockImagePreview}>
-                <View style={styles.mockRetina} />
-                <Text style={styles.mockImageText}>Retinal Image Captured</Text>
-              </View>
+              {capturedImage ? (
+                <Image source={{ uri: capturedImage }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+              ) : (
+                <View style={styles.mockImagePreview}>
+                  <View style={styles.mockRetina} />
+                  <Text style={styles.mockImageText}>Retinal Image Captured</Text>
+                </View>
+              )}
             </View>
           </Animated.View>
 
@@ -225,6 +296,15 @@ export default function ScanScreen() {
             setShowResults(false);
             retakePhoto();}}
         />
+        {isPreparing && (
+          <View style={styles.loadingOverlay}>
+            <View style={styles.loadingCard}>
+              <ActivityIndicator size="large" color="#3B82F6" />
+              <Text style={styles.loadingTitle}>Preparing image…</Text>
+              <Text style={styles.loadingSubtitle}>This may take a few seconds</Text>
+            </View>
+          </View>
+        )}
       </>
     );
   }
@@ -242,6 +322,8 @@ export default function ScanScreen() {
         ref={cameraRef}
         style={styles.camera}
         facing={facing}
+        enableTorch={true}
+        flash={'on'}
       >
         <View style={styles.overlay}>
           <View style={styles.scanFrame}>
@@ -254,6 +336,8 @@ export default function ScanScreen() {
             Center retina within frame
           </Text>
         </View>
+        {/* Visual flash overlay */}
+        <Animated.View pointerEvents="none" style={[styles.flashOverlay, { opacity: flashAnim }]} />
       </CameraView>
     </View>
     <View style={styles.controls}>
@@ -272,7 +356,13 @@ export default function ScanScreen() {
         </TouchableOpacity>
       </Animated.View>
 
-      <View style={styles.placeholder} />
+      <TouchableOpacity
+        style={styles.flipButton}
+        onPress={pickFromGallery}
+        accessibilityLabel="Upload from gallery"
+      >
+        <ImagePlus size={22} color="#6B7280" />
+      </TouchableOpacity>
     </View>
     </>
   );
@@ -282,6 +372,40 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingCard: {
+    width: Math.min(width * 0.8, 320),
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 24,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  loadingTitle: {
+    marginTop: 12,
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  loadingSubtitle: {
+    marginTop: 4,
+    fontSize: 13,
+    color: '#6B7280',
   },
   header: {
     paddingTop: Platform.OS === 'ios' ? 64 : 44,
@@ -493,6 +617,14 @@ const styles = StyleSheet.create({
   placeholder: {
     width: 52,
     height: 52,
+  },
+  flashOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#FFFFFF',
   },
   previewContainer: {
     flex: 1,
